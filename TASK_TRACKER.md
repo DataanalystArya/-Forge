@@ -19,16 +19,16 @@ Legend:
 ---
 
 ## Phase 1: Foundation (Core Services & App Shell)
-- [ ] Initialize Python backend with virtualenv / dependencies (FastAPI, SQLAlchemy, Pydantic, Uvicorn, Jose, Passlib)
-- [ ] Configure database engine (SQLite for zero-friction local run + PostgreSQL production adapter)
-- [ ] Implement Database Models (Users, Repositories, Sessions, Patches, Executions)
-- [ ] Implement Auth System (JWT tokens, password hashing, `/api/auth/register`, `/api/auth/login`, `/api/auth/me`)
-- [ ] Initialize Next.js 14 frontend (TypeScript, Tailwind CSS, Shadcn UI setup)
-- [ ] Implement Global Layout & Navigation (Dark Navy theme, sidebar, breadcrumbs, user session status)
-- [ ] Implement Auth Pages (`/login`, `/register`) with client validation and token storage
-- [ ] Implement Main Dashboard (`/dashboard`) with statistics cards, recent sessions, and quick actions
-- [ ] Create base `docker-compose.yml` for dev services (Postgres, Redis, Qdrant, Neo4j)
-- [ ] Write and pass backend test suite for authentication and database sessions
+- [x] Initialize Python backend with virtualenv / dependencies (FastAPI, SQLAlchemy, Pydantic, Uvicorn, Jose, Passlib/Bcrypt)
+- [x] Configure database engine (SQLite for zero-friction local run + PostgreSQL production adapter)
+- [x] Implement Database Models (Users, Repositories, Sessions, Patches, Executions)
+- [x] Implement Auth System (JWT tokens, password hashing, `/api/auth/register`, `/api/auth/login`, `/api/auth/me`)
+- [x] Initialize Next.js 14 frontend (TypeScript, Tailwind CSS, Shadcn UI setup)
+- [x] Implement Global Layout & Navigation (Dark Navy theme, sidebar, breadcrumbs, user session status)
+- [x] Implement Auth Pages (`/login`, `/register`) with client validation and token storage
+- [x] Implement Main Dashboard (`/dashboard`) with statistics cards, recent sessions, and quick actions
+- [x] Create base `docker-compose.yml` for dev services (Postgres, Redis, Qdrant, Neo4j)
+- [x] Write and pass backend test suite for authentication and database sessions (5/5 passed)
 
 ---
 
