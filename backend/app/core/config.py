@@ -49,5 +49,14 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, v: str, info) -> str:
+        # Prevent default key in production environments
+        env = info.data.get("ENVIRONMENT", "development")
+        if env == "production" and "change_in_production" in v:
+            raise ValueError("Insecure default SECRET_KEY detected in production environment!")
+        return v
+
 
 settings = Settings()

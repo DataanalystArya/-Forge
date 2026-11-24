@@ -1,6 +1,10 @@
+import re
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+
+
+REPO_NAME_REGEX = re.compile(r"^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$")
 
 
 class RepositoryBase(BaseModel):
@@ -9,6 +13,16 @@ class RepositoryBase(BaseModel):
     default_branch: str = "main"
     is_private: bool = False
     clone_url: Optional[str] = None
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_repo_name(cls, v: str) -> str:
+        v = v.strip()
+        if not REPO_NAME_REGEX.match(v) or ".." in v:
+            raise ValueError(
+                "Invalid repository name format. Must be in 'owner/repo' format without path traversal or invalid characters."
+            )
+        return v
 
 
 class RepositoryCreate(RepositoryBase):

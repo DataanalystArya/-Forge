@@ -1,12 +1,22 @@
 import logging
 from typing import Generator
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from app.core.config import settings
 
 logger = logging.getLogger("forge.database")
 
 Base = declarative_base()
+
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Enforce foreign key constraints for SQLite connections."""
+    if type(dbapi_connection).__module__ in ("sqlite3", "pysqlite2.dbapi2"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 def get_engine():

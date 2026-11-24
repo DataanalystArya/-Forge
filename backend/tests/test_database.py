@@ -27,3 +27,15 @@ def test_database_table_initialization():
 
     for expected in expected_tables:
         assert expected in table_names, f"Expected table '{expected}' not found in database schemas"
+
+
+def test_database_postgres_resilient_fallback(monkeypatch):
+    """Verify that when configured with an unreachable PostgreSQL URL, get_engine falls back gracefully to SQLite."""
+    from app.core.config import settings
+    from app.core.database import get_engine
+    
+    # Point to an unreachable postgres port
+    monkeypatch.setattr(settings, "DATABASE_URL", "postgresql://fake:fake@127.0.0.1:54399/fake_db")
+    
+    fallback_engine = get_engine()
+    assert fallback_engine.dialect.name == "sqlite", f"Expected sqlite fallback, got {fallback_engine.dialect.name}"
