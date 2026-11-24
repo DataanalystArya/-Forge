@@ -1,3 +1,7 @@
+# Workspace Clones & Ingested Code
+workspaces/
+storage/
+
 # Python
 __pycache__/
 *.py[cod]

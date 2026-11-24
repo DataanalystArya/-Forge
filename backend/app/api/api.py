@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api import auth, repositories, dashboard, health
+from app.api import auth, repositories, dashboard, health, github
 
 api_router = APIRouter()
 
@@ -8,6 +8,9 @@ api_router.include_router(health.router)
 
 # Authentication endpoints
 api_router.include_router(auth.router)
+
+# GitHub integration endpoints
+api_router.include_router(github.router)
 
 # Repositories endpoints
 api_router.include_router(repositories.router)

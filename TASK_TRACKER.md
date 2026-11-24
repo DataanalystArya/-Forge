@@ -34,13 +34,14 @@ Legend:
 ---
 
 ## Phase 2: GitHub & Repository Intelligence
-- [ ] Implement GitHub connection service (Personal Access Token / OAuth integration)
-- [ ] Implement Repository Ingestion Engine (GitHub clone, ZIP upload, sample benchmark repo loader)
-- [ ] Implement File System Scanner with `.gitignore` compliance, binary exclusion, and language detection
-- [ ] Implement Project Metadata Extractor (package manifests, entrypoint detection, architecture summary)
-- [ ] Build Repository Explorer UI (`/repositories`, `/repositories/[id]`) with file tree viewer
-- [ ] Integrate Monaco Editor for code preview with syntax highlighting
-- [ ] Write and pass tests for repository ingestion and file parsing
+- [x] Implement GitHub connection service (Personal Access Token / OAuth integration with token encryption at rest)
+- [x] Implement Repository Ingestion Engine (GitHub clone, ZIP upload, sample benchmark repo loader)
+- [x] Implement File System Scanner with `.gitignore` compliance, binary exclusion, and language detection
+- [x] Implement Tree-sitter & AST Code Symbol Extractor (functions, classes, methods, line ranges)
+- [x] Build Repository Explorer UI (`/repositories`, `/repositories/[id]`) with interactive file tree viewer
+- [x] Integrate Monaco Editor for code preview with syntax highlighting and line numbers
+- [x] Write and pass tests for repository ingestion, Zip Slip defense, and file parsing (16/16 tests passing)
+- [x] Create comprehensive `PHASE_2_REPORT.md`
 
 ---
 
