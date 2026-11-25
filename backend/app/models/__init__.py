@@ -9,6 +9,7 @@ from app.models.session import (
     SecurityFinding,
     PullRequest,
 )
+from app.models.rag import CodeChunk, IndexingRun, RetrievalLog
 
 __all__ = [
     "Base",
@@ -24,4 +25,7 @@ __all__ = [
     "TestExecution",
     "SecurityFinding",
     "PullRequest",
+    "CodeChunk",
+    "IndexingRun",
+    "RetrievalLog",
 ]

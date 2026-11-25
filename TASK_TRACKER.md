@@ -46,14 +46,14 @@ Legend:
 ---
 
 ## Phase 3: Advanced Code RAG System
-- [ ] Integrate Tree-sitter & Python AST parser for syntactic code breakdown
-- [ ] Implement semantic chunking (class-level, function-level, method-level with line traceability)
-- [ ] Set up Qdrant vector store integration with embedding abstraction (OpenAI / local fallbacks)
-- [ ] Implement Rank-BM25 keyword search index for lexical token matching
-- [ ] Implement Hybrid Retriever combining Dense Vector + Sparse BM25 via Reciprocal Rank Fusion (RRF)
-- [ ] Implement Cross-Encoder Reranking pipeline for top-K refinement
-- [ ] Build Code Intelligence UI (`/code-search`) with semantic query input and file/line citation cards
-- [ ] Write and pass retrieval relevance and precision tests
+- [x] Integrate Tree-sitter & Python AST parser for syntactic code breakdown
+- [x] Implement semantic chunking (class-level, function-level, method-level with line traceability)
+- [x] Set up Qdrant vector store integration with embedding abstraction (`all-MiniLM-L6-v2` via `sentence-transformers` + in-memory Qdrant fallback)
+- [x] Implement Rank-BM25 keyword search index for lexical token matching (`BM25Plus` with code-aware tokenizer)
+- [x] Implement Hybrid Retriever combining Dense Vector + Sparse BM25 via Reciprocal Rank Fusion (RRF)
+- [ ] Implement Cross-Encoder Reranking pipeline for top-K refinement (deferred; RRF fusion active)
+- [x] Build Code Intelligence UI (`/code-search`) with semantic query input, index controls, and file/line citation cards
+- [x] Write and pass retrieval relevance, incremental indexing, and isolation tests (38/38 total backend tests passing)
 
 ---
 

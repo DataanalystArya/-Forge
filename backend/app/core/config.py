@@ -42,6 +42,20 @@ class Settings(BaseSettings):
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "forge_graph"
 
+    # Phase 3 — Code RAG / Embedding configuration
+    # Lightweight model: 384-dim, CPU-friendly, ~22M params
+    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    EMBEDDING_DIMENSION: int = 384
+    QDRANT_COLLECTION: str = "forge_code_chunks"
+    # Use in-memory Qdrant when server is unavailable (development / CI)
+    QDRANT_USE_MEMORY: bool = False
+    # Chunking tuning
+    RAG_CHUNK_MAX_LINES: int = 80
+    RAG_CHUNK_OVERLAP_LINES: int = 10
+    RAG_MAX_CHUNKS_PER_FILE: int = 500
+    RAG_BATCH_SIZE: int = 32
+    RAG_TOP_K: int = 10
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -31,6 +31,8 @@ class Repository(Base):
     debugging_sessions = relationship("DebuggingSession", back_populates="repository", cascade="all, delete-orphan")
     security_findings = relationship("SecurityFinding", back_populates="repository", cascade="all, delete-orphan")
     pull_requests = relationship("PullRequest", back_populates="repository", cascade="all, delete-orphan")
+    code_chunks = relationship("CodeChunk", back_populates="repository", cascade="all, delete-orphan")
+    indexing_runs = relationship("IndexingRun", back_populates="repository", cascade="all, delete-orphan")
 
 
 class IndexingJob(Base):

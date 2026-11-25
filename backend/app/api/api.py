@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api import auth, repositories, dashboard, health, github
+from app.api import auth, repositories, dashboard, health, github, rag
 
 api_router = APIRouter()
 
@@ -17,3 +17,6 @@ api_router.include_router(repositories.router)
 
 # Dashboard statistics
 api_router.include_router(dashboard.router)
+
+# Phase 3 — Code RAG
+api_router.include_router(rag.router)
