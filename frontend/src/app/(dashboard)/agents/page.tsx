@@ -106,7 +106,7 @@ export default function AgentsPage() {
     fetchWithAuth(`${API_BASE_URL}/repositories`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
-        const list = Array.isArray(data) ? data : data.repositories ?? [];
+        const list = Array.isArray(data) ? data : (data.items || data.repositories || []);
         setRepos(list);
         if (list.length > 0 && !selectedRepo) setSelectedRepo(list[0].id);
       })

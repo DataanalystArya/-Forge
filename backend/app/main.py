@@ -22,6 +22,13 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing FORGE Backend Services...")
     ws_manager.set_loop(asyncio.get_running_loop())
     init_db()
+    from app.core.database import SessionLocal
+    from app.api.settings import load_persisted_settings
+    db = SessionLocal()
+    try:
+        load_persisted_settings(db)
+    finally:
+        db.close()
     logger.info("Database initialized successfully.")
     yield
     logger.info("Shutting down FORGE Backend Services...")

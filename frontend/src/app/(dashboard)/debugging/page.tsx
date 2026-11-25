@@ -87,6 +87,8 @@ interface SessionDetail {
   description: string;
   current_phase: string;
   retry_count: number;
+  execution_mode?: string;
+  llm_configured?: boolean;
   created_at: string;
   updated_at: string;
   agent_executions: AgentExecutionItem[];
@@ -266,6 +268,31 @@ export default function DebuggingPage() {
       }
     } catch (err) {
       setApprovalStatus(`Approval error: ${String(err)}`);
+    } finally {
+      setIsApproving(false);
+    }
+  }
+
+  // Rollback applied patch
+  async function handleRollback() {
+    if (!selectedSessionId) return;
+    setIsApproving(true);
+    setApprovalStatus(null);
+    try {
+      const res = await fetchWithAuth(`/automation/sessions/${selectedSessionId}/rollback`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setApprovalStatus(
+          data.rolled_back
+            ? `Rolled back to branch "${data.active_branch}".`
+            : `Rollback error: ${data.error || "Unknown error"}`
+        );
+        await loadSessionDetail(selectedSessionId);
+      }
+    } catch (err) {
+      setApprovalStatus(`Rollback failed: ${String(err)}`);
     } finally {
       setIsApproving(false);
     }
@@ -506,6 +533,17 @@ export default function DebuggingPage() {
                 >
                   {sessionDetail.status}
                 </span>
+                <span
+                  className={`px-2 py-0.5 rounded text-[11px] font-mono ${
+                    sessionDetail.execution_mode === "LIVE_LLM"
+                      ? "bg-violet-950/60 text-violet-300 border border-violet-700"
+                      : "bg-amber-950/50 text-amber-300 border border-amber-700/60"
+                  }`}
+                >
+                  {sessionDetail.execution_mode === "LIVE_LLM"
+                    ? "LIVE LLM"
+                    : "DETERMINISTIC AST FALLBACK"}
+                </span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Current Phase: <span className="font-mono text-cyan-300">{sessionDetail.current_phase}</span> &bull; Self-Repair Retries:{" "}
@@ -604,10 +642,19 @@ export default function DebuggingPage() {
 
                     <div className="flex items-center gap-2">
                       {p.is_applied ? (
-                        <span className="px-2.5 py-1 rounded-full bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-xs font-mono flex items-center gap-1.5">
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Applied to Branch</span>
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 rounded-full bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-xs font-mono flex items-center gap-1.5">
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Applied to Branch</span>
+                          </span>
+                          <button
+                            onClick={handleRollback}
+                            disabled={isApproving}
+                            className="px-3 py-1 rounded-lg bg-rose-950/60 hover:bg-rose-900/70 border border-rose-800 text-rose-300 text-xs font-mono transition disabled:opacity-50"
+                          >
+                            Rollback Patch
+                          </button>
+                        </div>
                       ) : (
                         <button
                           onClick={() => handleApprove(p.id)}

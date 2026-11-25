@@ -246,12 +246,8 @@ export default function RepositoriesPage() {
       const formData = new FormData();
       formData.append("file", selectedZipFile);
 
-      const token = localStorage.getItem("forge_access_token");
-      const uploadRes = await fetch(`http://localhost:8000/api/v1/repositories/${repo.id}/upload-zip`, {
+      const uploadRes = await fetchWithAuth(`/repositories/${repo.id}/upload-zip`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
         body: formData,
       });
 

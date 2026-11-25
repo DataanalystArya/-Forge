@@ -133,7 +133,7 @@ export default function CodeSearchPage() {
     fetchWithAuth(`${API_BASE_URL}/repositories`)
       .then((r) => r.json())
       .then((data) => {
-        const list: Repository[] = Array.isArray(data) ? data : data.repositories ?? [];
+        const list: Repository[] = Array.isArray(data) ? data : (data.items || data.repositories || []);
         setRepos(list);
         if (list.length > 0 && !repoId) setRepoId(list[0].id);
       })

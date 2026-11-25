@@ -121,8 +121,8 @@ export default function PullRequestsPage() {
   }, [selectedSessionId]);
 
   async function handleCreatePR() {
-    if (!selectedSessionId || !githubToken.trim()) {
-      setStatusMessage({ text: "GitHub Personal Access Token is required to create a PR.", error: true });
+    if (!selectedSessionId) {
+      setStatusMessage({ text: "Please select an approved debugging session first.", error: true });
       return;
     }
     setIsSubmitting(true);
@@ -255,7 +255,7 @@ export default function PullRequestsPage() {
               type="password"
               value={githubToken}
               onChange={(e) => setGithubToken(e.target.value)}
-              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+              placeholder="ghp_... (optional if saved in Settings)"
               className="w-full bg-[#0A0E17] border border-border rounded-xl p-2.5 text-xs text-foreground focus:outline-none focus:border-violet-500 font-mono"
             />
           </div>

@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSION: int = 384
     QDRANT_COLLECTION: str = "forge_code_chunks"
     # Use in-memory Qdrant when server is unavailable (development / CI)
-    QDRANT_USE_MEMORY: bool = False
+    QDRANT_USE_MEMORY: bool = True
     # Chunking tuning
     RAG_CHUNK_MAX_LINES: int = 80
     RAG_CHUNK_OVERLAP_LINES: int = 10

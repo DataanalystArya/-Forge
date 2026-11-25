@@ -42,7 +42,7 @@ class CreatePRRequest(BaseModel):
     body: str
     base_branch: str = "main"
     draft: bool = True           # Draft PRs by default — user must un-draft manually
-    github_token: str            # PAT supplied at request time — never stored
+    github_token: str = ""       # Optional if user has stored encrypted PAT in settings
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +130,39 @@ def approve_and_apply_patch(
     }
 
 
+@router.post("/sessions/{session_id}/rollback")
+def rollback_session_patch(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Revert applied patches and restore the base branch in the repository workspace."""
+    s = _get_session(session_id, db, current_user)
+    repo = db.query(Repository).filter(Repository.id == s.repository_id).first()
+    if not repo:
+        raise HTTPException(404, "Repository not found")
+
+    workspace_path = get_repo_workspace_path(repo.id)
+    if not workspace_path.exists():
+        raise HTTPException(400, "Repository workspace not found")
+
+    git_svc = GitService(str(workspace_path))
+    rb_res = git_svc.rollback_changes(repo.default_branch or "main") if git_svc.available else {"ok": False, "error": "git not available"}
+
+    patches = db.query(Patch).filter(Patch.session_id == session_id, Patch.is_applied == True).all()  # noqa: E712
+    for p in patches:
+        p.is_applied = False
+    db.commit()
+
+    return {
+        "session_id": session_id,
+        "rolled_back": rb_res.get("ok", False),
+        "active_branch": rb_res.get("active_branch"),
+        "reverted_from": rb_res.get("reverted_from"),
+        "error": rb_res.get("error"),
+    }
+
+
 @router.post("/sessions/{session_id}/create-pr")
 def create_pull_request(
     session_id: str,
@@ -165,7 +198,19 @@ def create_pull_request(
     git_svc = GitService(str(workspace_path) if workspace_path.exists() else "")
     head_branch = git_svc.current_branch() if git_svc.available else "forge/fix"
 
-    pr_svc = GitHubPRService(req.github_token)
+    token = (req.github_token or "").strip()
+    if not token and current_user.github_account and current_user.github_account.access_token_enc:
+        from app.core.encryption import decrypt_token
+        token = decrypt_token(current_user.github_account.access_token_enc)
+    if not token:
+        raise HTTPException(400, "GitHub Personal Access Token is required (provide in form or save in Settings).")
+
+    if git_svc.available:
+        push_res = git_svc.push_branch(head_branch, token)
+        if not push_res.get("ok"):
+            return {"ok": False, "error": f"Failed to push branch '{head_branch}': {push_res.get('error')}"}
+
+    pr_svc = GitHubPRService(token)
     result = pr_svc.create_pull_request(
         owner=owner,
         repo=repo_name,

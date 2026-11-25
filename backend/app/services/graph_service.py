@@ -10,6 +10,7 @@ Fallback: in-memory NetworkX graph + SQLite-persisted GraphNode/GraphEdge rows.
 from __future__ import annotations
 
 import ast
+import json
 import logging
 import os
 import re
@@ -306,7 +307,7 @@ class GraphService:
         """Return node/edge counts for a repository."""
         if self._neo4j_ok:
             return self._summary_neo4j(repo_id)
-        g = self._nx.get(repo_id)
+        g = self._get_nx(repo_id)
         if g is None:
             return {"repo_id": repo_id, "nodes": 0, "edges": 0, "available": False}
         label_counts: dict[str, int] = {}
@@ -347,6 +348,21 @@ class GraphService:
 
     # ---- NetworkX backend -------------------------------------------------
 
+    def _get_nx(self, repo_id: str) -> nx.DiGraph | None:
+        if repo_id in self._nx:
+            return self._nx[repo_id]
+        cache_path = Path("./data/graphs") / f"{repo_id}.json"
+        if cache_path.is_file():
+            try:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                g = nx.node_link_graph(data)
+                self._nx[repo_id] = g
+                return g
+            except Exception as exc:
+                logger.warning("Failed to load persisted graph %s: %s", cache_path, exc)
+        return None
+
     def _store_nx(self, repo_id: str, nodes: list[dict], edges: list[dict]) -> None:
         g = nx.DiGraph()
         for n in nodes:
@@ -355,9 +371,16 @@ class GraphService:
         for e in edges:
             g.add_edge(e["source"], e["target"], relation=e["relation"])
         self._nx[repo_id] = g
+        try:
+            cache_dir = Path("./data/graphs")
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            with open(cache_dir / f"{repo_id}.json", "w", encoding="utf-8") as f:
+                json.dump(nx.node_link_data(g), f)
+        except Exception as exc:
+            logger.warning("Failed to persist graph %s to disk: %s", repo_id, exc)
 
     def _subgraph_nx(self, repo_id: str, symbol: str, depth: int) -> dict[str, Any]:
-        g = self._nx.get(repo_id)
+        g = self._get_nx(repo_id)
         if g is None:
             return {"available": False, "nodes": [], "edges": []}
         # Find seed nodes that match symbol (case-insensitive substring)
@@ -392,7 +415,7 @@ class GraphService:
         return {"available": True, "nodes": rf_nodes, "edges": rf_edges, "backend": "networkx"}
 
     def _context_nx(self, repo_id: str, query: str, limit: int) -> dict[str, Any]:
-        g = self._nx.get(repo_id)
+        g = self._get_nx(repo_id)
         if g is None:
             return {"available": False, "nodes": [], "edges": []}
         terms = query.lower().split()

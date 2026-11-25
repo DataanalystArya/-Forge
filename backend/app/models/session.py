@@ -12,7 +12,7 @@ class DebuggingSession(Base):
     repository_id = Column(String(36), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
-    description = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
     error_logs = Column(Text, nullable=True)
     status = Column(String(50), default="CREATED")  # CREATED, PLANNING, ANALYZING, CODING, TESTING, REPAIRING, REVIEWING, COMPLETED, FAILED
     current_phase = Column(String(100), default="PLANNING")
@@ -68,6 +68,7 @@ class TestExecution(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     session_id = Column(String(36), ForeignKey("debugging_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
     patch_id = Column(String(36), ForeignKey("patches.id", ondelete="SET NULL"), nullable=True)
+    command = Column(Text, nullable=True)
     exit_code = Column(Integer, default=0)
     stdout = Column(Text, nullable=True)
     stderr = Column(Text, nullable=True)

@@ -75,10 +75,9 @@ class GitService:
                 modified.splitlines(keepends=True),
                 fromfile=f"a/{rel}",
                 tofile=f"b/{rel}",
-                lineterm="",
             )
         )
-        return "\n".join(diff_lines)
+        return "".join(diff_lines)
 
     def apply_diff_patch(self, diff_content: str) -> dict:
         """
@@ -90,8 +89,8 @@ class GitService:
         patch_path = os.path.join(self.local_path, ".forge_patch.diff")
         try:
             with open(patch_path, "w", encoding="utf-8") as f:
-                f.write(diff_content)
-            self._repo.git.apply(patch_path, check=True)
+                f.write(diff_content if diff_content.endswith("\n") else diff_content + "\n")
+            self._repo.git.apply(patch_path)
             return {"ok": True}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
@@ -119,6 +118,51 @@ class GitService:
             except Exception:
                 return None
         return None
+
+    def push_branch(self, branch_name: str, github_token: str = "") -> dict:
+        """Push branch to origin using temporary authenticated URL without persisting credentials."""
+        if not self._repo:
+            return {"ok": False, "error": "Git repo not available"}
+        try:
+            origin = self._repo.remote("origin")
+        except Exception:
+            return {"ok": False, "error": "No 'origin' remote configured for this repository"}
+
+        orig_url = origin.url
+        try:
+            if github_token and orig_url.startswith("https://") and "@" not in orig_url:
+                auth_url = orig_url.replace("https://", f"https://x-access-token:{github_token}@", 1)
+                self._repo.git.push(auth_url, f"{branch_name}:{branch_name}")
+            else:
+                self._repo.git.push("origin", branch_name)
+            return {"ok": True, "branch": branch_name}
+        except Exception as exc:
+            err = str(exc)
+            if github_token:
+                err = err.replace(github_token, "***")
+            return {"ok": False, "error": err}
+
+    def rollback_changes(self, target_branch: str = "") -> dict:
+        """Revert uncommitted workspace changes or switch back to the base branch."""
+        if not self._repo:
+            return {"ok": False, "error": "Git repo not available"}
+        try:
+            self._repo.git.reset("--hard", "HEAD")
+            self._repo.git.clean("-fd")
+            current = self.current_branch()
+            if current.startswith("forge/fix-"):
+                candidates = [target_branch] if target_branch else ["main", "master"]
+                for b in candidates:
+                    if b and b in [h.name for h in self._repo.heads]:
+                        self._repo.git.checkout(b)
+                        try:
+                            self._repo.delete_head(current, force=True)
+                        except Exception:
+                            pass
+                        return {"ok": True, "reverted_from": current, "active_branch": b}
+            return {"ok": True, "reverted_from": current, "active_branch": self.current_branch()}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     # ---- working tree utils -----------------------------------------------
 

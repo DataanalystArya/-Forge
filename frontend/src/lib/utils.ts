@@ -27,7 +27,9 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
   const token = getStoredToken();
   const headers = new Headers(options.headers || {});
   
-  headers.set("Content-Type", "application/json");
+  if (!(options.body instanceof FormData) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }

@@ -65,6 +65,7 @@ class VectorStoreService:
     def __init__(self) -> None:
         self._client = None
         self._is_memory: bool = False
+        self._mode: str = "uninitialized"
         self._client_lock = threading.Lock()
         self._collection_name: str = "forge_code_chunks"
         self._dimension: int = 384
@@ -83,7 +84,18 @@ class VectorStoreService:
 
     @classmethod
     def reset_instance(cls) -> None:
+        """Reset the singleton instance, closing any existing client.
+        This is used in tests to ensure a fresh VectorStoreService.
+        """
         with cls._lock:
+            if cls._instance is not None:
+                # Attempt to close the underlying Qdrant client if it exists
+                client = getattr(cls._instance, "_client", None)
+                if client is not None:
+                    try:
+                        client.close()
+                    except Exception:
+                        pass
             cls._instance = None
 
     # ------------------------------------------------------------------
@@ -117,17 +129,21 @@ class VectorStoreService:
                 # Probe the server
                 client.get_collections()
                 self._is_memory = False
+                self._mode = "server"
                 logger.info(f"Connected to Qdrant server at {settings.QDRANT_URL}")
             except Exception as exc:
+                # Fallback to in-memory Qdrant when server is unavailable (e.g., sandbox restrictions)
                 logger.warning(
-                    f"Qdrant server unavailable ({exc}). "
-                    "Falling back to in-memory Qdrant (data will not persist across restarts)."
+                    f"Qdrant server unavailable ({exc}). Falling back to in-memory Qdrant."
                 )
                 client = QdrantClient(":memory:")
                 self._is_memory = True
+                self._mode = "memory"
+                logger.info("Using in-memory Qdrant as fallback.")
         else:
             client = QdrantClient(":memory:")
             self._is_memory = True
+            self._mode = "memory"
             logger.info("Using in-memory Qdrant (QDRANT_USE_MEMORY=True).")
 
         # Ensure the collection exists
@@ -162,6 +178,9 @@ class VectorStoreService:
 
     def is_memory_mode(self) -> bool:
         return self._is_memory
+
+    def get_mode(self) -> str:
+        return self._mode
 
     # ------------------------------------------------------------------
     # Upsert

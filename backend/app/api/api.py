@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api import auth, repositories, dashboard, health, github, rag, agents, graph, debugging, github_automation, monitoring
+from app.api import auth, repositories, dashboard, health, github, rag, agents, graph, debugging, github_automation, monitoring, settings
 
 api_router = APIRouter()
 
@@ -35,3 +35,6 @@ api_router.include_router(github_automation.router)
 
 # Phase 8 — Monitoring & Evaluation
 api_router.include_router(monitoring.router)
+
+# Platform Settings & Credentials
+api_router.include_router(settings.router)

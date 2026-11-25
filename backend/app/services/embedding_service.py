@@ -64,7 +64,11 @@ class EmbeddingService:
             try:
                 from sentence_transformers import SentenceTransformer  # type: ignore
                 logger.info(f"Loading embedding model: {self._model_name}")
-                self._model = SentenceTransformer(self._model_name)
+                try:
+                    # Prefer local cache first to avoid slow Hub network retries when offline
+                    self._model = SentenceTransformer(self._model_name, local_files_only=True)
+                except Exception:
+                    self._model = SentenceTransformer(self._model_name)
                 logger.info(
                     f"Embedding model loaded. "
                     f"Dimension: {self._model.get_sentence_embedding_dimension()}"
@@ -72,8 +76,7 @@ class EmbeddingService:
             except Exception as exc:
                 logger.error(f"Failed to load embedding model '{self._model_name}': {exc}")
                 raise EmbeddingUnavailableError(
-                    f"Could not load sentence-transformers model '{self._model_name}'. "
-                    f"Reason: {exc}"
+                    f"Could not load embedding model '{self._model_name}': {exc}"
                 ) from exc
 
     # ------------------------------------------------------------------

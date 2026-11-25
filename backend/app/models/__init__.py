@@ -11,6 +11,7 @@ from app.models.session import (
 )
 from app.models.rag import CodeChunk, IndexingRun, RetrievalLog
 from app.models.observability import LLMUsageLog, EvaluationMetric
+from app.models.settings import PlatformSetting
 
 __all__ = [
     "Base",
@@ -31,4 +32,5 @@ __all__ = [
     "RetrievalLog",
     "LLMUsageLog",
     "EvaluationMetric",
+    "PlatformSetting",
 ]
