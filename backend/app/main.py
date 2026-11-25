@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
+import asyncio
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import init_db
 from app.api.api import api_router
+from app.services.ws_manager import ws_manager
 
 # Setup logger
 logging.basicConfig(
@@ -18,6 +20,7 @@ logger = logging.getLogger("forge.main")
 async def lifespan(app: FastAPI):
     """Lifecycle manager to initialize database and background services."""
     logger.info("Initializing FORGE Backend Services...")
+    ws_manager.set_loop(asyncio.get_running_loop())
     init_db()
     logger.info("Database initialized successfully.")
     yield

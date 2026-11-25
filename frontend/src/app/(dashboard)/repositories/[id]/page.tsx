@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Database,
   Cpu,
+  Share2,
 } from "lucide-react";
 import { fetchWithAuth } from "@/lib/utils";
 
@@ -281,8 +282,15 @@ export default function RepositoryExplorerDetailPage() {
           </div>
         </div>
 
-        {/* Language distribution pills */}
+        {/* Language distribution pills & Graph link */}
         <div className="hidden md:flex items-center gap-2">
+          <Link
+            href={`/repositories/${repoId}/graph`}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600/30 hover:bg-violet-600/50 border border-violet-500/50 text-violet-300 text-xs font-mono transition"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>Knowledge Graph</span>
+          </Link>
           {Object.entries(languagesObj).map(([lang, pct]) => (
             <span
               key={lang}

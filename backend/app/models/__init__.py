@@ -10,6 +10,7 @@ from app.models.session import (
     PullRequest,
 )
 from app.models.rag import CodeChunk, IndexingRun, RetrievalLog
+from app.models.observability import LLMUsageLog, EvaluationMetric
 
 __all__ = [
     "Base",
@@ -28,4 +29,6 @@ __all__ = [
     "CodeChunk",
     "IndexingRun",
     "RetrievalLog",
+    "LLMUsageLog",
+    "EvaluationMetric",
 ]

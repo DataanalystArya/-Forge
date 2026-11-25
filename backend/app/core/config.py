@@ -35,12 +35,15 @@ class Settings(BaseSettings):
 
     # External Provider Keys (optional in Phase 1)
     OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_BASE_URL: str = ""  # Optional OpenAI-compatible endpoint (e.g. Ollama)
     GITHUB_CLIENT_ID: str = ""
     GITHUB_CLIENT_SECRET: str = ""
     QDRANT_URL: str = "http://localhost:6333"
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "forge_graph"
+    NEO4J_USE_MEMORY: bool = False
 
     # Phase 3 — Code RAG / Embedding configuration
     # Lightweight model: 384-dim, CPU-friendly, ~22M params
