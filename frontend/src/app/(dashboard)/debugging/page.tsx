@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   Bug,
   Terminal,
@@ -17,6 +18,9 @@ import {
   ArrowRight,
   Code2,
   Cpu,
+  FolderGit2,
+  ExternalLink,
+  Sparkles,
 } from "lucide-react";
 import { fetchWithAuth } from "@/lib/utils";
 
@@ -94,11 +98,12 @@ interface SessionDetail {
 export default function DebuggingPage() {
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [selectedRepoId, setSelectedRepoId] = useState<string>("");
-  const [issueTitle, setIssueTitle] = useState("Investigate & fix runtime issues");
-  const [issueDesc, setIssueDesc] = useState("");
+  const [issueTitle, setIssueTitle] = useState("Audit codebase for runtime anomalies & test failures");
+  const [issueDesc, setIssueDesc] = useState("Execute AST security audit, locate root cause of errors, and synthesize verified patch.");
   const [errorLogs, setErrorLogs] = useState("");
   const [maxRetries, setMaxRetries] = useState(3);
   const [isLaunching, setIsLaunching] = useState(false);
+  const [launchMessage, setLaunchMessage] = useState<{ text: string; error: boolean } | null>(null);
 
   const [sessions, setSessions] = useState<DebuggingSessionSummary[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -107,16 +112,19 @@ export default function DebuggingPage() {
   const [approvalStatus, setApprovalStatus] = useState<string | null>(null);
   const [isApproving, setIsApproving] = useState(false);
 
-  // Load repositories
+  // Load repositories safely (no trailing slash, handles items wrapper)
   useEffect(() => {
     async function loadRepos() {
       try {
-        const res = await fetchWithAuth("/repositories/");
+        const res = await fetchWithAuth("/repositories");
         if (res.ok) {
           const data = await res.json();
-          setRepositories(data);
-          if (data.length > 0 && !selectedRepoId) {
-            setSelectedRepoId(data[0].id);
+          const list: Repository[] = Array.isArray(data)
+            ? data
+            : (data.items || data.repositories || []);
+          setRepositories(list);
+          if (list.length > 0) {
+            setSelectedRepoId((prev) => prev || list[0].id);
           }
         }
       } catch (err) {
@@ -126,15 +134,18 @@ export default function DebuggingPage() {
     loadRepos();
   }, []);
 
-  // Load sessions
+  // Load sessions safely
   const loadSessions = useCallback(async () => {
     try {
       const res = await fetchWithAuth("/debugging/sessions");
       if (res.ok) {
         const data = await res.json();
-        setSessions(data);
-        if (data.length > 0 && !selectedSessionId) {
-          setSelectedSessionId(data[0].id);
+        const list: DebuggingSessionSummary[] = Array.isArray(data)
+          ? data
+          : (data.items || []);
+        setSessions(list);
+        if (list.length > 0 && !selectedSessionId) {
+          setSelectedSessionId(list[0].id);
         }
       }
     } catch (err) {
@@ -153,7 +164,13 @@ export default function DebuggingPage() {
       const res = await fetchWithAuth(`/debugging/sessions/${id}`);
       if (res.ok) {
         const data = await res.json();
-        setSessionDetail(data);
+        setSessionDetail({
+          ...data,
+          agent_executions: data.agent_executions || [],
+          patches: data.patches || [],
+          security_findings: data.security_findings || [],
+          test_results: data.test_results || [],
+        });
       }
     } catch (err) {
       console.error("Failed to load session detail", err);
@@ -168,43 +185,59 @@ export default function DebuggingPage() {
     }
   }, [selectedSessionId, loadSessionDetail]);
 
-  // Auto-refresh running sessions
+  // Auto-refresh running sessions every 3 seconds
   useEffect(() => {
-    if (!sessionDetail || sessionDetail.status === "COMPLETED" || sessionDetail.status === "FAILED") {
-      return;
-    }
+    if (!sessionDetail) return;
+    const isFinished = sessionDetail.status === "COMPLETED" || sessionDetail.status === "FAILED";
+    if (isFinished) return;
+
     const timer = setInterval(() => {
       if (selectedSessionId) {
         loadSessionDetail(selectedSessionId);
       }
       loadSessions();
-    }, 4000);
+    }, 3000);
     return () => clearInterval(timer);
   }, [sessionDetail, selectedSessionId, loadSessionDetail, loadSessions]);
 
+  // Quick fill with sample bug trace
+  function handleFillSample() {
+    setIssueTitle("Fix AssertionError in matrix serialization test");
+    setIssueDesc("Function bad_fn accepts mutable default argument and fails exception handling contract during matrix transform.");
+    setErrorLogs('File "test_matrix.py", line 42, in test_transform\n  assert bad_fn() == 2\nAssertionError: assert 0 == 2\nTraceback (most recent call last):\n  File "matrix.py", line 12, in bad_fn\n    return eval("1 + 1")');
+  }
+
   // Launch new debugging session
   async function handleLaunch() {
-    if (!selectedRepoId) return;
+    if (!selectedRepoId) {
+      setLaunchMessage({ text: "Please select a target repository first.", error: true });
+      return;
+    }
     setIsLaunching(true);
+    setLaunchMessage(null);
     setApprovalStatus(null);
     try {
       const res = await fetchWithAuth("/debugging/sessions", {
         method: "POST",
         body: JSON.stringify({
           repo_id: selectedRepoId,
-          title: issueTitle,
-          description: issueDesc,
+          title: issueTitle || "Autonomous Debugging Session",
+          description: issueDesc || "Scan for bugs and execute verified repair",
           error_logs: errorLogs,
           max_retries: maxRetries,
         }),
       });
       if (res.ok) {
         const data = await res.json();
+        setLaunchMessage({ text: `Debugging session #${data.session_id.slice(0, 8)} launched successfully!`, error: false });
         await loadSessions();
         setSelectedSessionId(data.session_id);
+      } else {
+        const errData = await res.json();
+        setLaunchMessage({ text: `Failed to launch: ${errData.detail || "Server error"}`, error: true });
       }
     } catch (err) {
-      console.error("Failed to launch session", err);
+      setLaunchMessage({ text: `Network error: ${String(err)}`, error: true });
     } finally {
       setIsLaunching(false);
     }
@@ -225,7 +258,7 @@ export default function DebuggingPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setApprovalStatus(`Branch "${data.branch}" created and patch committed.`);
+        setApprovalStatus(`Branch "${data.branch}" created and patch committed successfully!`);
         await loadSessionDetail(selectedSessionId);
       } else {
         const errData = await res.json();
@@ -240,26 +273,58 @@ export default function DebuggingPage() {
 
   return (
     <div className="space-y-6">
+      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Autonomous Debugging & Self-Repair</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">AI Debugging & Self-Repair Workspace</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            End-to-end AST root-cause localization, minimal patch synthesis, pytest verification, and bounded self-repair
+            Autonomous AST root-cause localization, minimal patch synthesis, isolated pytest verification, and bounded self-repair
           </p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-violet-950/40 border border-violet-800/40 text-violet-300 text-xs font-mono">
-          <Terminal className="w-3.5 h-3.5 text-violet-400" />
-          <span>PHASE 6 ENGINE</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleFillSample}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#111827] border border-border text-xs font-mono text-cyan-300 hover:text-white hover:border-cyan-500/50 transition"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Load Sample Bug</span>
+          </button>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-violet-950/40 border border-violet-800/40 text-violet-300 text-xs font-mono">
+            <Terminal className="w-3.5 h-3.5 text-violet-400" />
+            <span>PHASE 6 ENGINE</span>
+          </div>
         </div>
       </div>
 
-      {/* Launch Box & Lifecycle Specs */}
+      {/* Warning if no repositories */}
+      {repositories.length === 0 && (
+        <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-800/50 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+            <div className="text-xs text-amber-200">
+              <span className="font-bold">No connected repositories found.</span> You need to register or upload a repository first before initiating an automated debugging session.
+            </div>
+          </div>
+          <Link
+            href="/repositories"
+            className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium shrink-0 transition"
+          >
+            Go to Repository Explorer
+          </Link>
+        </div>
+      )}
+
+      {/* Main Grid: Launch Form (Left) & Sessions List (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Launch Column */}
         <div className="lg:col-span-2 p-6 rounded-2xl bg-[#111827] border border-border/80 space-y-4">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <Bug className="w-4 h-4 text-rose-400" />
-            <span>Launch Debugging Session</span>
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <Bug className="w-4 h-4 text-rose-400" />
+              <span>Launch Debugging Session</span>
+            </h3>
+            <span className="text-xs text-muted-foreground font-mono">LangGraph State Machine</span>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -269,11 +334,15 @@ export default function DebuggingPage() {
                 onChange={(e) => setSelectedRepoId(e.target.value)}
                 className="w-full bg-[#0A0E17] border border-border rounded-xl p-2.5 text-sm text-foreground focus:outline-none focus:border-violet-500"
               >
-                {repositories.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.full_name} ({r.status})
-                  </option>
-                ))}
+                {repositories.length === 0 ? (
+                  <option value="">No repositories available</option>
+                ) : (
+                  repositories.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.full_name} ({r.status})
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
@@ -284,10 +353,10 @@ export default function DebuggingPage() {
                 onChange={(e) => setMaxRetries(Number(e.target.value))}
                 className="w-full bg-[#0A0E17] border border-border rounded-xl p-2.5 text-sm text-foreground focus:outline-none focus:border-violet-500"
               >
-                <option value={1}>1 Attempt (No Retries)</option>
+                <option value={1}>1 Attempt (Fast Scan)</option>
                 <option value={2}>2 Attempts</option>
                 <option value={3}>3 Attempts (Standard Recommended)</option>
-                <option value={5}>5 Attempts (Deep Search)</option>
+                <option value={5}>5 Attempts (Exhaustive Loop)</option>
               </select>
             </div>
           </div>
@@ -298,7 +367,7 @@ export default function DebuggingPage() {
               type="text"
               value={issueTitle}
               onChange={(e) => setIssueTitle(e.target.value)}
-              placeholder="e.g. Fix AssertionError in test_transform_matrix"
+              placeholder="e.g. Audit calc.py for AST bugs and eval() vulnerabilities"
               className="w-full bg-[#0A0E17] border border-border rounded-xl p-2.5 text-sm text-foreground focus:outline-none focus:border-violet-500 font-sans"
             />
           </div>
@@ -309,7 +378,7 @@ export default function DebuggingPage() {
               rows={2}
               value={issueDesc}
               onChange={(e) => setIssueDesc(e.target.value)}
-              placeholder="Describe reproduction steps, unexpected behavior, or requirements..."
+              placeholder="Describe reproduction steps, expected vs actual behavior, or target constraints..."
               className="w-full bg-[#0A0E17] border border-border rounded-xl p-2.5 text-sm text-foreground focus:outline-none focus:border-violet-500 font-sans"
             />
           </div>
@@ -320,37 +389,63 @@ export default function DebuggingPage() {
               rows={3}
               value={errorLogs}
               onChange={(e) => setErrorLogs(e.target.value)}
-              placeholder="Paste pytest tracebacks, exception logs, or failing test output..."
+              placeholder="Paste pytest tracebacks, exception lines, or terminal outputs..."
               className="w-full bg-[#0A0E17] border border-border rounded-xl p-2.5 text-xs text-foreground focus:outline-none focus:border-violet-500 font-mono"
             />
           </div>
 
+          {launchMessage && (
+            <div
+              className={`p-3 rounded-xl border text-xs font-mono flex items-center gap-2 ${
+                launchMessage.error
+                  ? "bg-rose-950/40 border-rose-800 text-rose-300"
+                  : "bg-emerald-950/40 border-emerald-800 text-emerald-300"
+              }`}
+            >
+              {launchMessage.error ? <XCircle className="w-4 h-4 shrink-0" /> : <Check className="w-4 h-4 shrink-0" />}
+              <span>{launchMessage.text}</span>
+            </div>
+          )}
+
           <button
             onClick={handleLaunch}
             disabled={isLaunching || !selectedRepoId}
-            className="w-full py-3 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-medium rounded-xl text-sm flex items-center justify-center gap-2 transition"
+            className="w-full py-3 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-medium rounded-xl text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-violet-900/20"
           >
             {isLaunching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
             <span>Initiate Autonomous Debugging & Self-Repair Workflow</span>
           </button>
         </div>
 
-        {/* Sessions List */}
+        {/* Sessions Column */}
         <div className="p-6 rounded-2xl bg-[#111827] border border-border/80 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <History className="w-4 h-4 text-violet-400" />
                 <span>Debugging Sessions</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-[#0A0E17] border border-border text-muted-foreground font-mono">
+                  {sessions.length}
+                </span>
               </h3>
-              <button onClick={loadSessions} className="text-muted-foreground hover:text-white transition">
+              <button
+                onClick={loadSessions}
+                className="p-1.5 text-muted-foreground hover:text-white rounded-lg bg-[#0A0E17] border border-border transition"
+                title="Refresh sessions"
+              >
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
             </div>
 
             <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
               {sessions.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-8 text-center">No sessions recorded yet.</div>
+                <div className="text-xs text-muted-foreground py-12 text-center font-mono">
+                  <Terminal className="w-6 h-6 mx-auto text-muted-foreground/40 mb-2" />
+                  No debugging sessions yet.
+                  <p className="text-[11px] text-muted-foreground/60 mt-1">
+                    Select a repository and click &quot;Initiate&quot; to start.
+                  </p>
+                </div>
               ) : (
                 sessions.map((s) => (
                   <button
@@ -358,7 +453,7 @@ export default function DebuggingPage() {
                     onClick={() => setSelectedSessionId(s.id)}
                     className={`w-full text-left p-3 rounded-xl border text-xs transition ${
                       selectedSessionId === s.id
-                        ? "bg-violet-950/40 border-violet-600 text-white"
+                        ? "bg-violet-950/40 border-violet-500 text-white shadow-sm"
                         : "bg-[#0A0E17] border-border hover:border-border/80 text-muted-foreground"
                     }`}
                   >
@@ -367,16 +462,16 @@ export default function DebuggingPage() {
                       <span
                         className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-mono ${
                           s.status === "COMPLETED"
-                            ? "bg-emerald-950/60 text-emerald-300"
+                            ? "bg-emerald-950/60 text-emerald-300 border border-emerald-800/40"
                             : s.status === "FAILED"
-                            ? "bg-rose-950/60 text-rose-300"
-                            : "bg-amber-950/60 text-amber-300"
+                            ? "bg-rose-950/60 text-rose-300 border border-rose-800/40"
+                            : "bg-amber-950/60 text-amber-300 border border-amber-800/40"
                         }`}
                       >
                         {s.status}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between mt-1 text-[11px] text-muted-foreground">
+                    <div className="flex items-center justify-between mt-1 text-[11px] text-muted-foreground font-mono">
                       <span>Phase: {s.current_phase || "Initializing"}</span>
                       <span>Retries: {s.retry_count}</span>
                     </div>
@@ -387,14 +482,14 @@ export default function DebuggingPage() {
           </div>
 
           <div className="pt-4 border-t border-border text-[11px] font-mono text-muted-foreground">
-            HITL Rule: Never claims a bug is fixed unless test execution genuinely passes.
+            Zero Fake Success Policy &bull; Pytest verification strictly enforced.
           </div>
         </div>
       </div>
 
       {/* Selected Session Detail Workspace */}
       {sessionDetail && (
-        <div className="space-y-6">
+        <div className="space-y-6 pt-2">
           {/* Header Banner */}
           <div className="p-6 rounded-2xl bg-[#111827] border border-border/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
@@ -419,18 +514,35 @@ export default function DebuggingPage() {
               </p>
             </div>
 
-            {approvalStatus && (
-              <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-emerald-300 text-xs font-mono">
-                {approvalStatus}
-              </div>
-            )}
+            <div className="flex items-center gap-3">
+              {approvalStatus && (
+                <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-emerald-300 text-xs font-mono flex items-center gap-2">
+                  <Check className="w-3.5 h-3.5 shrink-0" />
+                  <span>{approvalStatus}</span>
+                  <Link
+                    href="/pull-requests"
+                    className="ml-2 text-cyan-300 underline font-semibold flex items-center gap-1"
+                  >
+                    <span>View in PR Center</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              )}
+              <button
+                onClick={() => selectedSessionId && loadSessionDetail(selectedSessionId)}
+                className="p-2 rounded-xl bg-[#0A0E17] border border-border text-muted-foreground hover:text-white transition"
+                title="Refresh detail"
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingDetail ? "animate-spin" : ""}`} />
+              </button>
+            </div>
           </div>
 
-          {/* Agent Executions Timeline */}
+          {/* Multi-Agent Executions Timeline */}
           <div className="p-6 rounded-2xl bg-[#111827] border border-border/80">
             <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-4">
               <Cpu className="w-4 h-4 text-cyan-400" />
-              <span>Multi-Agent Workflow Step Trace</span>
+              <span>Multi-Agent Collective Step Trace</span>
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
               {[
@@ -443,7 +555,8 @@ export default function DebuggingPage() {
                 "SelfRepairAgent",
                 "CodeReviewAgent",
               ].map((name) => {
-                const exec = sessionDetail.agent_executions.find((e) => e.agent === name);
+                const execs = sessionDetail.agent_executions || [];
+                const exec = execs.find((e) => e.agent === name);
                 const isCompleted = exec?.status === "COMPLETED";
                 const isFailed = exec?.status === "FAILED";
                 return (
@@ -472,13 +585,13 @@ export default function DebuggingPage() {
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <FileCode className="w-4 h-4 text-violet-400" />
-                <span>Synthesized Patches & Unified Diffs ({sessionDetail.patches.length})</span>
+                <span>Synthesized Patches & Unified Diffs ({(sessionDetail.patches || []).length})</span>
               </h3>
             </div>
 
-            {sessionDetail.patches.length === 0 ? (
-              <div className="p-6 rounded-xl bg-[#0A0E17] border border-border text-xs text-muted-foreground text-center">
-                No patches generated yet.
+            {(sessionDetail.patches || []).length === 0 ? (
+              <div className="p-6 rounded-xl bg-[#0A0E17] border border-border text-xs text-muted-foreground text-center font-mono">
+                No patches generated yet. If tests pass without defects, patch generation is skipped.
               </div>
             ) : (
               sessionDetail.patches.map((p) => (
@@ -499,7 +612,7 @@ export default function DebuggingPage() {
                         <button
                           onClick={() => handleApprove(p.id)}
                           disabled={isApproving}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-medium flex items-center gap-1.5 transition"
+                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-medium flex items-center gap-1.5 transition"
                         >
                           <GitBranch className="w-3.5 h-3.5" />
                           <span>Approve & Apply Patch</span>
@@ -524,7 +637,7 @@ export default function DebuggingPage() {
                                   : isRem
                                   ? "text-rose-400 bg-rose-950/20"
                                   : isHdr
-                                  ? "text-cyan-400"
+                                  ? "text-cyan-400 font-bold"
                                   : "text-gray-300"
                               }
                             >
@@ -543,11 +656,11 @@ export default function DebuggingPage() {
           <div className="p-6 rounded-2xl bg-[#111827] border border-border/80 space-y-4">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Terminal className="w-4 h-4 text-emerald-400" />
-              <span>Sandbox Test Suite Executions ({sessionDetail.test_results.length})</span>
+              <span>Sandbox Test Suite Executions ({(sessionDetail.test_results || []).length})</span>
             </h3>
 
-            {sessionDetail.test_results.length === 0 ? (
-              <div className="p-6 rounded-xl bg-[#0A0E17] border border-border text-xs text-muted-foreground text-center">
+            {(sessionDetail.test_results || []).length === 0 ? (
+              <div className="p-6 rounded-xl bg-[#0A0E17] border border-border text-xs text-muted-foreground text-center font-mono">
                 No test results recorded yet.
               </div>
             ) : (
@@ -581,10 +694,10 @@ export default function DebuggingPage() {
           <div className="p-6 rounded-2xl bg-[#111827] border border-border/80 space-y-4">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-amber-400" />
-              <span>Security Audit Findings ({sessionDetail.security_findings.length})</span>
+              <span>Security Audit Findings ({(sessionDetail.security_findings || []).length})</span>
             </h3>
 
-            {sessionDetail.security_findings.length === 0 ? (
+            {(sessionDetail.security_findings || []).length === 0 ? (
               <div className="p-6 rounded-xl bg-[#0A0E17] border border-border text-xs text-emerald-400 text-center font-mono">
                 No security vulnerabilities discovered in this session.
               </div>

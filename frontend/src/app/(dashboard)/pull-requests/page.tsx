@@ -68,7 +68,7 @@ export default function PullRequestsPage() {
       const res = await fetchWithAuth("/automation/pull-requests");
       if (res.ok) {
         const data = await res.json();
-        setPrs(data);
+        setPrs(Array.isArray(data) ? data : (data.items || []));
       }
     } catch (err) {
       console.error("Failed to load pull requests", err);
@@ -82,11 +82,12 @@ export default function PullRequestsPage() {
       const res = await fetchWithAuth("/debugging/sessions");
       if (res.ok) {
         const data = await res.json();
-        setSessions(data);
-        if (data.length > 0 && !selectedSessionId) {
-          setSelectedSessionId(data[0].id);
-          setPrTitle(`fix: resolve ${data[0].title}`);
-          setPrBody(`Automated patch synthesized and verified by FORGE.\n\n- Task: ${data[0].title}`);
+        const list = Array.isArray(data) ? data : (data.items || []);
+        setSessions(list);
+        if (list.length > 0 && !selectedSessionId) {
+          setSelectedSessionId(list[0].id);
+          setPrTitle(`fix: resolve ${list[0].title}`);
+          setPrBody(`Automated patch synthesized and verified by FORGE.\n\n- Task: ${list[0].title}`);
         }
       }
     } catch (err) {
