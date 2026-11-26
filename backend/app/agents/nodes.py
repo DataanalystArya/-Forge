@@ -714,9 +714,14 @@ def testing_node(state: ForgeAgentState) -> Dict[str, Any]:
             try:
                 if edits:
                     backups = _apply_edits_temporarily(workspace_dir, edits)
+                test_env = os.environ.copy()
+                ws_path = Path(workspace_dir).resolve()
+                existing_pp = os.environ.get("PYTHONPATH", "")
+                test_env["PYTHONPATH"] = f"{ws_path}{os.pathsep}{ws_path / 'src'}{os.pathsep}{existing_pp}".rstrip(os.pathsep)
                 proc = subprocess.run(
                     [sys.executable, "-m", "pytest", "-q", "--tb=short"],
                     cwd=workspace_dir,
+                    env=test_env,
                     capture_output=True,
                     text=True,
                     timeout=60,

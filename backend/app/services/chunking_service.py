@@ -113,6 +113,71 @@ def _sliding_window_chunks(
     return chunks
 
 
+def _collect_uncovered_chunks(
+    file_lines: List[str],
+    covered_ranges: List[Tuple[int, int]],
+    rel_path: str,
+    language: str,
+    max_lines: int,
+    overlap: int,
+    max_chunks: int,
+) -> List[ChunkData]:
+    """Capture code outside function/class definitions (imports, configs, script code)."""
+    if max_chunks <= 0:
+        return []
+
+    total_lines = len(file_lines)
+    if total_lines == 0:
+        return []
+
+    # Sort and merge covered ranges
+    sorted_ranges = sorted(covered_ranges, key=lambda r: r[0])
+    uncovered_spans: List[Tuple[int, int]] = []
+    curr = 1
+
+    for start, end in sorted_ranges:
+        if start > curr:
+            uncovered_spans.append((curr, start - 1))
+        curr = max(curr, end + 1)
+    if curr <= total_lines:
+        uncovered_spans.append((curr, total_lines))
+
+    chunks: List[ChunkData] = []
+    for u_start, u_end in uncovered_spans:
+        if len(chunks) >= max_chunks:
+            break
+        span_lines = file_lines[u_start - 1 : u_end]
+        # Ignore empty or comment-only whitespace spans
+        non_empty = [l for l in span_lines if l.strip() and not l.strip().startswith("#")]
+        if not non_empty:
+            continue
+
+        if len(span_lines) <= max_lines:
+            body = "\n".join(span_lines)
+            chunks.append(
+                ChunkData(
+                    file_path=rel_path,
+                    language=language,
+                    symbol_name=None,
+                    symbol_type="BLOCK",
+                    start_line=u_start,
+                    end_line=u_end,
+                    chunk_content=body,
+                    content_hash=_hash(body),
+                )
+            )
+        else:
+            sub = _sliding_window_chunks(
+                span_lines, rel_path, language, max_lines, overlap, max_chunks - len(chunks)
+            )
+            for sc in sub:
+                sc.start_line += u_start - 1
+                sc.end_line += u_start - 1
+            chunks.extend(sub)
+
+    return chunks
+
+
 def _extract_symbol_chunks_python(
     content: str,
     rel_path: str,
@@ -121,7 +186,7 @@ def _extract_symbol_chunks_python(
     overlap: int,
     max_chunks: int,
 ) -> List[ChunkData]:
-    """Extract Python function/class chunks, splitting large ones with overlap."""
+    """Extract Python function/class chunks, splitting large ones with overlap, and capturing module code."""
     # Prefer tree-sitter; fall back to AST
     if _TS_PYTHON_PARSER:
         try:
@@ -134,6 +199,7 @@ def _extract_symbol_chunks_python(
 
     file_lines = _lines(content)
     chunks: List[ChunkData] = []
+    covered_ranges: List[Tuple[int, int]] = []
 
     for sym in symbols:
         if len(chunks) >= max_chunks:
@@ -142,6 +208,7 @@ def _extract_symbol_chunks_python(
         s_end = sym["end_line"]           # exclusive
         sym_lines = file_lines[s_start:s_end]
         sym_len = len(sym_lines)
+        covered_ranges.append((sym["start_line"], sym["end_line"]))
 
         if sym_len <= max_lines:
             body = "\n".join(sym_lines)
@@ -171,13 +238,21 @@ def _extract_symbol_chunks_python(
                 sc.end_line += s_start
             chunks.extend(sub_chunks)
 
-    # If no symbols extracted, fall back to sliding window
+    # Capture top-level module code (imports, constants, global logic) outside symbols
+    if len(chunks) < max_chunks:
+        uncovered = _collect_uncovered_chunks(
+            file_lines, covered_ranges, rel_path, language, max_lines, overlap, max_chunks - len(chunks)
+        )
+        chunks.extend(uncovered)
+
+    # If no symbols extracted at all, fall back to sliding window
     if not chunks:
         chunks = _sliding_window_chunks(
             file_lines, rel_path, language, max_lines, overlap, max_chunks
         )
 
-    return chunks
+    # Sort chunks in file order by start_line
+    return sorted(chunks, key=lambda c: c.start_line)
 
 
 def _extract_symbol_chunks_js_ts(
@@ -188,35 +263,59 @@ def _extract_symbol_chunks_js_ts(
     overlap: int,
     max_chunks: int,
 ) -> List[ChunkData]:
-    """Extract JS/TS function/class chunks using the scanner regex extractor."""
+    """Extract JS/TS function/class chunks, splitting large ones and capturing module code."""
     symbols = extract_ts_js_symbols_simple(content)
     file_lines = _lines(content)
     chunks: List[ChunkData] = []
+    covered_ranges: List[Tuple[int, int]] = []
 
     for sym in symbols:
         if len(chunks) >= max_chunks:
             break
         s_start = sym["start_line"] - 1
         s_end = sym["end_line"]
-        body = "\n".join(file_lines[s_start:s_end])
-        chunks.append(
-            ChunkData(
-                file_path=rel_path,
-                language=language,
-                symbol_name=sym["entity_name"],
-                symbol_type=sym["entity_type"],
-                start_line=sym["start_line"],
-                end_line=sym["end_line"],
-                chunk_content=body,
-                content_hash=_hash(body),
+        sym_lines = file_lines[s_start:s_end]
+        sym_len = len(sym_lines)
+        covered_ranges.append((sym["start_line"], sym["end_line"]))
+
+        if sym_len <= max_lines:
+            body = "\n".join(sym_lines)
+            chunks.append(
+                ChunkData(
+                    file_path=rel_path,
+                    language=language,
+                    symbol_name=sym["entity_name"],
+                    symbol_type=sym["entity_type"],
+                    start_line=sym["start_line"],
+                    end_line=sym["end_line"],
+                    chunk_content=body,
+                    content_hash=_hash(body),
+                )
             )
+        else:
+            sub_chunks = _sliding_window_chunks(
+                sym_lines, rel_path, language, max_lines, overlap,
+                max_chunks - len(chunks),
+            )
+            for sc in sub_chunks:
+                sc.symbol_name = sym["entity_name"]
+                sc.symbol_type = sym["entity_type"]
+                sc.start_line += s_start
+                sc.end_line += s_start
+            chunks.extend(sub_chunks)
+
+    # Capture top-level code (imports, exports, configurations) outside symbols
+    if len(chunks) < max_chunks:
+        uncovered = _collect_uncovered_chunks(
+            file_lines, covered_ranges, rel_path, language, max_lines, overlap, max_chunks - len(chunks)
         )
+        chunks.extend(uncovered)
 
     if not chunks:
         chunks = _sliding_window_chunks(
             file_lines, rel_path, language, max_lines, overlap, max_chunks
         )
-    return chunks
+    return sorted(chunks, key=lambda c: c.start_line)
 
 
 # ---------------------------------------------------------------------------

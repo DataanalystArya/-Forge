@@ -1,6 +1,8 @@
 # Workspace Clones & Ingested Code
 workspaces/
 storage/
+data/
+backend/data/
 
 # Python
 __pycache__/

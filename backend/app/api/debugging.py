@@ -512,8 +512,15 @@ def run_repository_tests(
 
     m_pass = re.search(r"(\d+)\s+passed", stdout)
     m_fail = re.search(r"(\d+)\s+failed", stdout)
-    passed_count = int(m_pass.group(1)) if m_pass else (1 if exit_code == 0 else 0)
-    failed_count = int(m_fail.group(1)) if m_fail else (0 if exit_code == 0 else 1)
+    if exit_code == 5:
+        # Pytest exit code 5: no tests collected (not a test failure)
+        passed_count = 0
+        failed_count = 0
+        if not stderr:
+            stderr = "Pytest collected 0 tests (exit code 5). Ensure test files are named test_*.py or *_test.py."
+    else:
+        passed_count = int(m_pass.group(1)) if m_pass else (1 if exit_code == 0 else 0)
+        failed_count = int(m_fail.group(1)) if m_fail else (0 if exit_code == 0 else 1)
 
     te = TestExecution(
         session_id=session.id,
@@ -526,7 +533,7 @@ def run_repository_tests(
         stderr=stderr,
     )
     db.add(te)
-    session.status = "COMPLETED" if exit_code == 0 else "FAILED"
+    session.status = "COMPLETED" if exit_code in (0, 5) else "FAILED"
     db.commit()
     db.refresh(te)
 

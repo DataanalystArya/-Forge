@@ -56,6 +56,7 @@ def _run_indexing(run_id: str, repository_id: str, user_id: str, force: bool) ->
     from app.services.chunking_service import chunk_repository
     from app.services.embedding_service import EmbeddingService, EmbeddingUnavailableError
     from app.services.vector_store_service import VectorStoreService
+    from app.services.retrieval_service import invalidate_bm25_cache
     from app.core.config import settings
 
     db: Session = SessionLocal()
@@ -105,6 +106,7 @@ def _run_indexing(run_id: str, repository_id: str, user_id: str, force: bool) ->
             db.query(CodeChunk).filter(CodeChunk.repository_id == repository_id).delete()
             db.commit()
             VectorStoreService.get_instance().delete_by_repository(repository_id)
+            invalidate_bm25_cache(repository_id)
             existing_hashes: dict[str, str] = {}
         else:
             existing = (
@@ -174,22 +176,27 @@ def _run_indexing(run_id: str, repository_id: str, user_id: str, force: bool) ->
                 _fail(db, run, f"Embedding model unavailable: {exc}")
                 return
 
-            # Store chunks in DB
-            db_chunk_objs = []
+            # Batch lookup of existing chunks to avoid 32x roundtrips per batch
+            batch_file_paths = {c.file_path for c in batch}
+            existing_chunks_batch = (
+                db.query(CodeChunk)
+                .filter(
+                    CodeChunk.repository_id == repository_id,
+                    CodeChunk.file_path.in_(batch_file_paths),
+                )
+                .all()
+            )
+            existing_map = {
+                (c.file_path, c.start_line, c.symbol_name): c
+                for c in existing_chunks_batch
+            }
+
             qdrant_payloads = []
+            new_chunk_objs = []
 
             for chunk_data, vector in zip(batch, vectors):
-                # Check if already exists (for update scenario)
-                existing_chunk = (
-                    db.query(CodeChunk)
-                    .filter(
-                        CodeChunk.repository_id == repository_id,
-                        CodeChunk.file_path == chunk_data.file_path,
-                        CodeChunk.start_line == chunk_data.start_line,
-                        CodeChunk.symbol_name == chunk_data.symbol_name,
-                    )
-                    .first()
-                )
+                key = (chunk_data.file_path, chunk_data.start_line, chunk_data.symbol_name)
+                existing_chunk = existing_map.get(key)
 
                 if existing_chunk:
                     existing_chunk.chunk_content = chunk_data.chunk_content
@@ -213,21 +220,39 @@ def _run_indexing(run_id: str, repository_id: str, user_id: str, force: bool) ->
                         is_embedded=True,
                     )
                     db.add(new_chunk)
-                    db.flush()  # get the id
-                    chunk_id = new_chunk.id
+                    new_chunk_objs.append((new_chunk, chunk_data, vector))
+                    chunk_id = None  # Will be assigned after single bulk flush
 
-                qdrant_payloads.append({
-                    "chunk_id": chunk_id,
-                    "repository_id": repository_id,
-                    "user_id": user_id,
-                    "file_path": chunk_data.file_path,
-                    "symbol_name": chunk_data.symbol_name,
-                    "symbol_type": chunk_data.symbol_type,
-                    "start_line": chunk_data.start_line,
-                    "end_line": chunk_data.end_line,
-                    "language": chunk_data.language,
-                    "chunk_content": chunk_data.chunk_content,
-                })
+                if chunk_id is not None:
+                    qdrant_payloads.append({
+                        "chunk_id": chunk_id,
+                        "repository_id": repository_id,
+                        "user_id": user_id,
+                        "file_path": chunk_data.file_path,
+                        "symbol_name": chunk_data.symbol_name,
+                        "symbol_type": chunk_data.symbol_type,
+                        "start_line": chunk_data.start_line,
+                        "end_line": chunk_data.end_line,
+                        "language": chunk_data.language,
+                        "chunk_content": chunk_data.chunk_content,
+                    })
+
+            # Single flush for all newly inserted chunks in this batch
+            if new_chunk_objs:
+                db.flush()
+                for new_chunk, chunk_data, vector in new_chunk_objs:
+                    qdrant_payloads.append({
+                        "chunk_id": new_chunk.id,
+                        "repository_id": repository_id,
+                        "user_id": user_id,
+                        "file_path": chunk_data.file_path,
+                        "symbol_name": chunk_data.symbol_name,
+                        "symbol_type": chunk_data.symbol_type,
+                        "start_line": chunk_data.start_line,
+                        "end_line": chunk_data.end_line,
+                        "language": chunk_data.language,
+                        "chunk_content": chunk_data.chunk_content,
+                    })
 
             vec_svc.upsert_chunks(qdrant_payloads, vectors)
             db.commit()
@@ -243,6 +268,7 @@ def _run_indexing(run_id: str, repository_id: str, user_id: str, force: bool) ->
         run.status = "COMPLETED"
         run.embedded_chunks = embedded_count
         run.completed_at = datetime.now(timezone.utc)
+        invalidate_bm25_cache(repository_id)
         db.commit()
 
         logger.info(

@@ -251,12 +251,14 @@ class GraphService:
         total_edges: list[dict] = []
         files_scanned = 0
 
+        from app.services.scanner_service import IGNORED_DIRECTORIES
+
         # File node per source file
         for root, _dirs, files in os.walk(workspace_dir):
-            # Skip hidden / build dirs
+            # Skip hidden / build / cache dirs
             _dirs[:] = [
                 d for d in _dirs
-                if not d.startswith(".") and d not in {"node_modules", "__pycache__", ".git", "dist", "build", ".next"}
+                if not d.startswith(".") and d not in IGNORED_DIRECTORIES
             ]
             for fname in files:
                 fpath = os.path.join(root, fname)

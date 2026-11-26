@@ -58,6 +58,18 @@ class SearchResult:
 # BM25 Search
 # ---------------------------------------------------------------------------
 
+_BM25_CACHE: dict[str, dict] = {}
+
+
+def invalidate_bm25_cache(repository_id: Optional[str] = None) -> None:
+    """Invalidate cached BM25 index when repository chunks are updated or deleted."""
+    global _BM25_CACHE
+    if repository_id:
+        _BM25_CACHE.pop(repository_id, None)
+    else:
+        _BM25_CACHE.clear()
+
+
 def search_bm25(
     query: str,
     repository_id: str,
@@ -65,27 +77,62 @@ def search_bm25(
     top_k: int = 10,
 ) -> List[SearchResult]:
     """
-    Build a BM25 index on-the-fly from code_chunks in the DB for the given
+    Build or reuse a BM25 index from code_chunks in the DB for the given
     repository and return the top-k results.
 
-    Uses rank-bm25 (BM25Okapi).  Returns [] when no chunks are indexed.
+    Uses rank-bm25 (BM25Plus). Returns [] when no chunks are indexed.
     """
     try:
         from rank_bm25 import BM25Plus  # type: ignore
         from app.models.rag import CodeChunk
 
-        # Fetch all chunks for this repository
-        chunks = (
-            db.query(CodeChunk)
+        chunk_count = (
+            db.query(CodeChunk.id)
             .filter(CodeChunk.repository_id == repository_id)
-            .all()
+            .count()
         )
-        if not chunks:
+        if chunk_count == 0:
+            invalidate_bm25_cache(repository_id)
             return []
 
-        # Tokenise — code-aware: splits on punctuation to handle identifiers
-        corpus_tokens = [_tokenize(chunk.chunk_content) for chunk in chunks]
-        bm25 = BM25Plus(corpus_tokens)
+        cached = _BM25_CACHE.get(repository_id)
+        if cached and cached.get("chunk_count") == chunk_count:
+            bm25 = cached["bm25"]
+            chunks = cached["chunks"]
+            corpus_tokens = cached["corpus_tokens"]
+        else:
+            # Fetch all chunks for this repository and convert to plain dicts to detach from Session
+            db_chunks = (
+                db.query(CodeChunk)
+                .filter(CodeChunk.repository_id == repository_id)
+                .all()
+            )
+            if not db_chunks:
+                return []
+
+            chunks = [
+                {
+                    "id": c.id,
+                    "repository_id": c.repository_id,
+                    "file_path": c.file_path,
+                    "symbol_name": c.symbol_name,
+                    "symbol_type": c.symbol_type,
+                    "start_line": c.start_line,
+                    "end_line": c.end_line,
+                    "language": c.language,
+                    "chunk_content": c.chunk_content,
+                }
+                for c in db_chunks
+            ]
+
+            corpus_tokens = [_tokenize(c["chunk_content"]) for c in chunks]
+            bm25 = BM25Plus(corpus_tokens)
+            _BM25_CACHE[repository_id] = {
+                "bm25": bm25,
+                "chunks": chunks,
+                "corpus_tokens": corpus_tokens,
+                "chunk_count": len(chunks),
+            }
 
         query_tokens = _tokenize(query)
         if not query_tokens:
@@ -111,15 +158,15 @@ def search_bm25(
             chunk = chunks[idx]
             results.append(
                 SearchResult(
-                    chunk_id=chunk.id,
-                    repository_id=chunk.repository_id,
-                    file_path=chunk.file_path,
-                    symbol_name=chunk.symbol_name,
-                    symbol_type=chunk.symbol_type,
-                    start_line=chunk.start_line,
-                    end_line=chunk.end_line,
-                    language=chunk.language,
-                    chunk_content=chunk.chunk_content,
+                    chunk_id=chunk["id"],
+                    repository_id=chunk["repository_id"],
+                    file_path=chunk["file_path"],
+                    symbol_name=chunk["symbol_name"],
+                    symbol_type=chunk["symbol_type"],
+                    start_line=chunk["start_line"],
+                    end_line=chunk["end_line"],
+                    language=chunk["language"],
+                    chunk_content=chunk["chunk_content"],
                     score=float(score),
                     retrieval_method="bm25",
                 )

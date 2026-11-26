@@ -27,6 +27,23 @@ IGNORED_DIRECTORIES = {
     "storage",
     "workspaces",
     ".gemini",
+    ".mypy_cache",
+    ".tox",
+    ".cache",
+    "env",
+    "coverage",
+    ".coverage",
+    "htmlcov",
+    "target",
+    ".gradle",
+    ".cargo",
+    ".turbo",
+    ".nuxt",
+    ".svelte-kit",
+    "out",
+    ".out",
+    ".yarn",
+    ".pnpm",
 }
 
 IGNORED_EXTENSIONS = {
@@ -37,6 +54,7 @@ IGNORED_EXTENSIONS = {
     ".woff", ".woff2", ".ttf", ".eot",
     ".mp4", ".mp3", ".wav", ".avi",
     ".db", ".sqlite", ".sqlite3",
+    ".min.js", ".min.css", ".map",
 }
 
 LANGUAGE_MAP = {
@@ -157,8 +175,52 @@ def extract_python_symbols_treesitter(content_bytes: bytes) -> List[Dict[str, An
     return symbols
 
 
+def _find_js_ts_block_end(lines: List[str], start_idx: int) -> int:
+    """Find the ending line number (1-indexed) of a JS/TS block by balancing braces."""
+    depth = 0
+    found_open = False
+    in_string: Optional[str] = None
+    escape = False
+
+    for i in range(start_idx, len(lines)):
+        line = lines[i]
+        j = 0
+        while j < len(line):
+            ch = line[j]
+            if escape:
+                escape = False
+                j += 1
+                continue
+            if ch == '\\':
+                escape = True
+                j += 1
+                continue
+            if in_string:
+                if ch == in_string:
+                    in_string = None
+                j += 1
+                continue
+            if ch in ('"', "'", '`'):
+                in_string = ch
+                j += 1
+                continue
+            if ch == '/' and j + 1 < len(line) and line[j + 1] == '/':
+                break  # line comment
+            if ch == '{':
+                depth += 1
+                found_open = True
+            elif ch == '}':
+                depth -= 1
+                if found_open and depth <= 0:
+                    return i + 1
+            j += 1
+        if found_open and depth <= 0:
+            return i + 1
+    return len(lines) if found_open else start_idx + 1
+
+
 def extract_ts_js_symbols_simple(content: str) -> List[Dict[str, Any]]:
-    """Extract functions, classes, and exported constants from JS/TS files."""
+    """Extract functions, classes, and exported constants from JS/TS files with line ranges."""
     import re
     symbols = []
     lines = content.splitlines()
@@ -170,31 +232,34 @@ def extract_ts_js_symbols_simple(content: str) -> List[Dict[str, Any]]:
     for idx, line in enumerate(lines, start=1):
         c_match = class_regex.match(line)
         if c_match:
+            end_line = _find_js_ts_block_end(lines, idx - 1)
             symbols.append({
                 "entity_type": "CLASS",
                 "entity_name": c_match.group(3),
                 "start_line": idx,
-                "end_line": idx,
+                "end_line": max(idx, end_line),
             })
             continue
 
         f_match = func_regex.match(line)
         if f_match:
+            end_line = _find_js_ts_block_end(lines, idx - 1)
             symbols.append({
                 "entity_type": "FUNCTION",
                 "entity_name": f_match.group(3),
                 "start_line": idx,
-                "end_line": idx,
+                "end_line": max(idx, end_line),
             })
             continue
 
         a_match = arrow_regex.match(line)
         if a_match:
+            end_line = _find_js_ts_block_end(lines, idx - 1)
             symbols.append({
                 "entity_type": "FUNCTION",
                 "entity_name": a_match.group(2),
                 "start_line": idx,
-                "end_line": idx,
+                "end_line": max(idx, end_line),
             })
 
     return symbols

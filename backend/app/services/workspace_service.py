@@ -157,6 +157,21 @@ def extract_zip_archive(repo_id: str, zip_file_bytes: bytes) -> Tuple[Path, int]
                 # Extract only regular files or directories
                 zf.extract(member, path=target_dir)
 
+            # Clean up macOS metadata folder if present
+            macosx_dir = target_dir / "__MACOSX"
+            if macosx_dir.exists() and macosx_dir.is_dir():
+                shutil.rmtree(macosx_dir, ignore_errors=True)
+
+            # If archive contained a single root directory (standard in GitHub downloads),
+            # flatten it so the workspace root contains the repository files directly
+            entries = [e for e in target_dir.iterdir() if e.name != "__MACOSX"]
+            if len(entries) == 1 and entries[0].is_dir():
+                single_dir = entries[0]
+                temp_dir = target_dir.parent / f"{target_dir.name}_temp_flatten"
+                single_dir.rename(temp_dir)
+                shutil.rmtree(target_dir, ignore_errors=True)
+                temp_dir.rename(target_dir)
+
             return target_dir, file_count
     except zipfile.BadZipFile:
         shutil.rmtree(target_dir, ignore_errors=True)
